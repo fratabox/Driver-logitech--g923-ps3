@@ -1,0 +1,59 @@
+name: Build PKG
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache toolchain
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ runner.os }}-v1
+
+      - name: Install prerequisites
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison flex gcc libelf-dev make \
+            texinfo libncurses5-dev patch python3 python-is-python3 subversion wget \
+            zlib1g-dev libtool libtool-bin bzip2 libgmp3-dev pkg-config g++ libssl-dev clang
+
+      - name: Build ps3dev toolchain and PSL1GHT (first run only, ~1h)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/ps3dev/ps3dev.git "$RUNNER_TEMP/ps3dev-src"
+          cd "$RUNNER_TEMP/ps3dev-src"
+          sudo mkdir -p "$PS3DEV"
+          sudo chown -R "$USER":"$USER" "$PS3DEV"
+          ./toolchain.sh
+
+      - name: Add tools to PATH
+        run: |
+          echo "$PS3DEV/bin" >> "$GITHUB_PATH"
+          echo "$PS3DEV/ppu/bin" >> "$GITHUB_PATH"
+
+      - name: Build PKG
+        run: |
+          make
+          make pkg
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: g923-initializer-pkg
+          path: |
+            *.pkg
+            *.self
+          if-no-files-found: error
