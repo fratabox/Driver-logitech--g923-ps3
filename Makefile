@@ -3,7 +3,7 @@ ifeq ($(strip $(PSL1GHT)),)
 $(error "PSL1GHT must be set in the environment.")
 endif
 
-include $(PSL1GHT)/host/ppu.mk
+include $(PSL1GHT)/ppu_rules
 
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
