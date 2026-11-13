@@ -37,7 +37,9 @@ jobs:
           cd "$RUNNER_TEMP/ps3dev-src"
           sudo mkdir -p "$PS3DEV"
           sudo chown -R "$USER":"$USER" "$PS3DEV"
-          ./toolchain.sh
+          ./prepare.sh
+          ./build-all.sh
+          test -x "$PS3DEV/ppu/bin/ppu-gcc" || test -x "$PS3DEV/bin/ppu-gcc"
 
       - name: Add tools to PATH
         run: |
