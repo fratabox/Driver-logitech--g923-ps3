@@ -28,7 +28,16 @@
 #include <stdarg.h>
 #include <stdint.h>
 
-#include <sys/systime.h>
+#include <unistd.h>
+#if defined(__has_include)
+#  if __has_include(<sys/systime.h>)
+#    include <sys/systime.h>
+#    define G923_SLEEP_US(us) sysUsleep(us)
+#  endif
+#endif
+#ifndef G923_SLEEP_US
+#  define G923_SLEEP_US(us) usleep(us)
+#endif
 #include <sysutil/sysutil.h>
 #include <usb/usb.h>
 
@@ -396,7 +405,7 @@ int main(int argc, char *argv[])
 
     while (g_running) {
         sysUtilCheckCallback();
-        sysUsleep(100 * 1000);          /* 10 veces por segundo */
+        G923_SLEEP_US(100 * 1000);          /* 10 veces por segundo */
         ticks++;
 
         if (g_reports != last_reports && g_last_len == 11) {

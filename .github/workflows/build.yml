@@ -51,6 +51,14 @@ jobs:
           make
           make pkg
 
+      - name: Diagnostico (solo si falla)
+        if: failure()
+        run: |
+          ls $PS3DEV/ppu/include | head -50
+          ls $PS3DEV/ppu/include/sys | head -80
+          ls $PS3DEV/ppu/include/usb 2>/dev/null
+          ls $PS3DEV/ppu/lib | head -80
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
