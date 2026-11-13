@@ -5,7 +5,7 @@ endif
 
 include $(PSL1GHT)/ppu_rules
 
-TARGET		:=	$(notdir $(CURDIR))
+TARGET		:=	G923Init
 BUILD		:=	build
 SOURCE		:=	source
 INCLUDE		:=	include
@@ -15,7 +15,7 @@ LIBS		:=	-lusb -lsysutil -llv2 -lm
 TITLE		:=	G923 PS3 Initializer
 APPID		:=	G923INIT0
 CONTENTID	:=	UP0001-$(APPID)_00-0000000000000000
-PKGFILES	:=	release
+PKGFILES	:=
 
 CFLAGS		=	-O2 -Wall -std=gnu99 -mcpu=cell $(MACHDEP) $(INCLUDES) $(LIBPSL1GHT_INC)
 LIBPATHS	:=	$(LIBPSL1GHT_LIB)
