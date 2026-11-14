@@ -380,26 +380,26 @@ static usbLddOps hid_ops = { "g923hid", hid_probe, hid_attach, hid_detach };
 static u8  g_band[NBANDS];
 static int g_video_ok = 0;
 
+static void fill_rect(u32 x, u32 y, u32 w, u32 h, u32 color)
+{
+    rsxSetScissor(context, (u16)x, (u16)y, (u16)w, (u16)h);
+    rsxSetClearColor(context, color);
+    rsxClearSurface(context, GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A);
+}
+
 static void screen_draw(int beat)
 {
-    u32 *fb;
-    u32 x, y, bh, c;
+    u32 b, bh, c;
     if (!g_video_ok)
         return;
-    fb = color_buffer[curr_fb];
     bh = display_height / NBANDS;
-    for (y = 0; y < display_height; y++) {
-        u32 b = y / bh;
-        if (b >= NBANDS) b = NBANDS - 1;
+    for (b = 0; b < NBANDS; b++) {
         c = (g_band[b] == 1) ? 0x0000AA00 : (g_band[b] == 2) ? 0x00CC0000 : 0x00404040;
-        for (x = 0; x < display_width; x++)
-            fb[y * display_width + x] = c;
+        fill_rect(0, b * bh, display_width, bh, c);
     }
     /* latido: cuadrado que alterna blanco/negro arriba a la derecha */
-    c = beat ? 0x00FFFFFF : 0x00000000;
-    for (y = 8; y < 88 && y < display_height; y++)
-        for (x = display_width - 88; x < display_width - 8; x++)
-            fb[y * display_width + x] = c;
+    fill_rect(display_width - 88, 8, 80, 80, beat ? 0x00FFFFFF : 0x00000000);
+    rsxSetScissor(context, 0, 0, (u16)display_width, (u16)display_height);
     flip();
 }
 
@@ -439,6 +439,7 @@ int main(int argc, char *argv[])
         void *host_addr = memalign(1024 * 1024, HOST_SIZE);
         if (host_addr) {
             init_screen(host_addr, HOST_SIZE);
+            set_render_target(curr_fb);
             g_video_ok = 1;
         }
     }
