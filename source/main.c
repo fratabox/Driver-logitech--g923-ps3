@@ -29,6 +29,7 @@
 #include <stdint.h>
 
 #include <unistd.h>
+#include <sysmodule/sysmodule.h>
 #if defined(__has_include)
 #  if __has_include(<sys/systime.h>)
 #    include <sys/systime.h>
@@ -406,6 +407,8 @@ int main(int argc, char *argv[])
 
     sysUtilRegisterCallback(0, sysutil_cb, NULL);
 
+    r = sysModuleLoad(SYSMODULE_USB);
+    logmsg("sysModuleLoad(USB) = 0x%x", (unsigned)r);
     r = usbInit();
     logmsg("usbInit() = %d", (int)r);
     r = usbRegisterExtraLdd(&wake_ops, G923_VID, G923_PID_XBOX);
@@ -450,6 +453,7 @@ int main(int argc, char *argv[])
     usbUnregisterExtraLdd(&wake_ops);
     usbUnregisterExtraLdd(&hid_ops);
     usbEnd();
+    sysModuleUnload(SYSMODULE_USB);
     if (g_log)
         fclose(g_log);
     sysUtilUnregisterCallback(0);

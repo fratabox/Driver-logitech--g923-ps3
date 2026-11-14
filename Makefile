@@ -10,7 +10,7 @@ BUILD		:=	build
 SOURCE		:=	source
 INCLUDE		:=	include
 DATA		:=	data
-LIBS		:=	-lusb -lsysutil -llv2 -lm
+LIBS		:=	-lusb -lsysmodule -lsysutil -llv2 -lm
 
 TITLE		:=	G923 PS3 Initializer
 APPID		:=	G923INIT0
