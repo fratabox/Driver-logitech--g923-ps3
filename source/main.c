@@ -67,6 +67,7 @@ static const u8 WAKE_CMD[5] = { 0x0f, 0x00, 0x01, 0x01, 0x42 };
 
 static FILE *g_log = NULL;
 
+void vlog(const char *fmt, ...);
 static void logmsg(const char *fmt, ...)
 {
     va_list ap;
@@ -371,6 +372,18 @@ static usbLddOps hid_ops = { "g923hid", hid_probe, hid_attach, hid_detach };
 /* ------------------------------------------------------------------ */
 
 
+void vlog(const char *fmt, ...)
+{
+    va_list ap;
+    if (!g_log)
+        return;
+    va_start(ap, fmt);
+    vfprintf(g_log, fmt, ap);
+    va_end(ap);
+    fputc('\n', g_log);
+    fflush(g_log);
+}
+
 /* ---- Indicador en pantalla: bandas de color (sin texto) ----
  * 0 arranque  1 log abierto  2 callback sysutil  3 modulo USB
  * 4 usbInit   5 driver C26D  6 driver C26E       7 llegaron reportes
@@ -389,18 +402,7 @@ static void fill_rect(u32 x, u32 y, u32 w, u32 h, u32 color)
 
 static void screen_draw(int beat)
 {
-    u32 b, bh, c;
-    if (!g_video_ok)
-        return;
-    bh = display_height / NBANDS;
-    for (b = 0; b < NBANDS; b++) {
-        c = (g_band[b] == 1) ? 0x0000AA00 : (g_band[b] == 2) ? 0x00CC0000 : 0x00404040;
-        fill_rect(0, b * bh, display_width, bh, c);
-    }
-    /* latido: cuadrado que alterna blanco/negro arriba a la derecha */
-    fill_rect(display_width - 88, 8, 80, 80, beat ? 0x00FFFFFF : 0x00000000);
-    rsxSetScissor(context, 0, 0, (u16)display_width, (u16)display_height);
-    flip();
+    (void)beat;     /* sin dibujo: ver nota en main() */
 }
 
 static int g_beat = 0;
@@ -408,6 +410,7 @@ static void mark(int band, int ok)
 {
     if (band >= 0 && band < NBANDS)
         g_band[band] = ok ? 1 : 2;
+    logmsg("paso %d: %s", band, ok ? "OK" : "FALLO");
     screen_draw(g_beat);
 }
 
@@ -435,15 +438,6 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    {
-        void *host_addr = memalign(1024 * 1024, HOST_SIZE);
-        if (host_addr) {
-            init_screen(host_addr, HOST_SIZE);
-            set_render_target(curr_fb);
-            g_video_ok = 1;
-        }
-    }
-    mark(0, 1);
 
     {
         /* Prueba varias rutas: la primera que se pueda escribir queda como log */
@@ -461,8 +455,20 @@ int main(int argc, char *argv[])
                 logmsg("log abierto en %s", paths[pi]);
         }
     }
-    mark(1, g_log != NULL);
     logmsg("ETAPA %d", (int)STAGE);
+    mark(0, 1);
+    mark(1, g_log != NULL);
+    {
+        /* El video se inicializa solo para que la PS3 no cierre la app;
+         * NO se dibuja nada (los cambios de cuadro no terminan en esta consola). */
+        void *host_addr = memalign(1024 * 1024, HOST_SIZE);
+        if (host_addr) {
+            init_screen(host_addr, HOST_SIZE);
+            g_video_ok = 1;
+        } else {
+            logmsg("sin memoria para el video");
+        }
+    }
     logmsg("G923 PS3 Initializer v0.1");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
