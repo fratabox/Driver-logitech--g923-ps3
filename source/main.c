@@ -185,7 +185,9 @@ static void wake_cfg_done(s32 result, s32 count, void *arg)
     (void)count;
 
     logmsg("[wake] SET_CONFIGURATION terminado: result=%d", (int)result);
+    logmsg("[wake] tx=%p o_pipe=%d alive=%d", (void *)u->tx, (int)u->o_pipe, (int)u->alive);
     memcpy(u->tx, WAKE_CMD, sizeof(WAKE_CMD));
+    logmsg("[wake] copiado; mando el comando...");
     r = usbInterruptTransfer(u->o_pipe, u->tx, sizeof(WAKE_CMD), wake_sent_done, u);
     logmsg("[wake] usbInterruptTransfer(OUT) devolvio %d", (int)r);
 }
@@ -256,7 +258,6 @@ static s32 wake_detach(s32 dev_id)
     return USB_DETACH_SUCCEEDED;
 }
 
-static usbLddOps wake_ops = { "g923wake", wake_probe, wake_attach, wake_detach };
 
 /* ------------------------------------------------------------------ */
 /* Etapa 2: 046D:C26E (HID) -> leer reportes                           */
@@ -365,7 +366,48 @@ static s32 hid_detach(s32 dev_id)
     return USB_DETACH_SUCCEEDED;
 }
 
-static usbLddOps hid_ops = { "g923hid", hid_probe, hid_attach, hid_detach };
+/* ------------------------------------------------------------------ */
+/* Un solo driver para los dos IDs.                                    */
+/* El wrapper de PSL1GHT le pone el mismo nombre ("desc") a todo LDD  */
+/* que se registra, asi que dos drivers distintos chocan: error        */
+/* 0x80110006 (ya registrado). Se registra el mismo para C26D y C26E.  */
+/* ------------------------------------------------------------------ */
+
+static u16 dev_pid(s32 dev_id)
+{
+    usbDeviceDescriptor *d = (usbDeviceDescriptor *)usbScanStaticDescriptor(dev_id, NULL, USB_DESCRIPTOR_TYPE_DEVICE);
+    return d ? SWAP16(d->idProduct) : 0;
+}
+
+static s32 g_probe(s32 dev_id)
+{
+    u16 pid = dev_pid(dev_id);
+    logmsg("[usb] probe dev_id=%d PID=%04x", (int)dev_id, (unsigned)pid);
+    return (pid == G923_PID_XBOX || pid == G923_PID_HID) ? USB_PROBE_SUCCEEDED : USB_PROBE_FAILED;
+}
+
+static s32 g_attach(s32 dev_id)
+{
+    u16 pid = dev_pid(dev_id);
+    if (pid == G923_PID_XBOX)
+        return wake_attach(dev_id);
+    if (pid == G923_PID_HID)
+        return hid_attach(dev_id);
+    return USB_ATTACH_FAILED;
+}
+
+static s32 g_detach(s32 dev_id)
+{
+    g923_unit *u = (g923_unit *)usbGetPrivateData(dev_id);
+    if (u == &g_wake)
+        return wake_detach(dev_id);
+    if (u == &g_hid)
+        return hid_detach(dev_id);
+    logmsg("[usb] detach dev_id=%d (sin datos privados)", (int)dev_id);
+    return USB_DETACH_SUCCEEDED;
+}
+
+static usbLddOps g_ops = { "g923", g_probe, g_attach, g_detach };
 
 /* ------------------------------------------------------------------ */
 /* Salida limpia con el boton PS                                       */
@@ -469,7 +511,7 @@ int main(int argc, char *argv[])
             logmsg("sin memoria para el video");
         }
     }
-    logmsg("G923 PS3 Initializer v0.1");
+    logmsg("G923 PS3 Initializer v0.2");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
     r = sysUtilRegisterCallback(0, sysutil_cb, NULL);
@@ -486,10 +528,10 @@ int main(int argc, char *argv[])
     mark(4, r == 0);
 #endif
 #if STAGE >= 3
-    r = usbRegisterExtraLdd(&wake_ops, G923_VID, G923_PID_XBOX);
+    r = usbRegisterExtraLdd(&g_ops, G923_VID, G923_PID_XBOX);
     logmsg("registrar C26D = %d", (int)r);
     mark(5, r == 0);
-    r = usbRegisterExtraLdd(&hid_ops, G923_VID, G923_PID_HID);
+    r = usbRegisterExtraLdd(&g_ops, G923_VID, G923_PID_HID);
     logmsg("registrar C26E = %d", (int)r);
     mark(6, r == 0);
 #endif
@@ -536,8 +578,7 @@ int main(int argc, char *argv[])
 
     logmsg("Saliendo...");
 #if STAGE >= 3
-    usbUnregisterExtraLdd(&wake_ops);
-    usbUnregisterExtraLdd(&hid_ops);
+    usbUnregisterExtraLdd(&g_ops);
 #endif
 #if STAGE >= 2
     usbEnd();
