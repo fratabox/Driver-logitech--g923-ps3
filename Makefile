@@ -5,19 +5,20 @@ endif
 
 include $(PSL1GHT)/ppu_rules
 
-TARGET		:=	G923Init
+STAGE		?=	3
+TARGET		:=	G923Init$(STAGE)
 BUILD		:=	build
 SOURCE		:=	source
 INCLUDE		:=	include
 DATA		:=	data
 LIBS		:=	-lusb -lsysmodule -lsysutil -llv2 -lm
 
-TITLE		:=	G923 PS3 Initializer
-APPID		:=	G923INIT0
+TITLE		:=	G923 Init etapa $(STAGE)
+APPID		?=	G923INIT0
 CONTENTID	:=	UP0001-$(APPID)_00-0000000000000000
 PKGFILES	:=
 
-CFLAGS		=	-O2 -Wall -std=gnu99 -mcpu=cell $(MACHDEP) $(INCLUDES) $(LIBPSL1GHT_INC)
+CFLAGS		=	-O2 -Wall -std=gnu99 -DSTAGE=$(STAGE) -mcpu=cell $(MACHDEP) $(INCLUDES) $(LIBPSL1GHT_INC)
 LIBPATHS	:=	$(LIBPSL1GHT_LIB)
 CXXFLAGS	+= -O2 -Wall
 

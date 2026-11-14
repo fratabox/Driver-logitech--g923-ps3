@@ -28,6 +28,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+#ifndef STAGE
+#define STAGE 3
+#endif
 #include <unistd.h>
 #include <sysmodule/sysmodule.h>
 #if defined(__has_include)
@@ -399,22 +402,33 @@ int main(int argc, char *argv[])
             "/dev_usb001/g923_log.txt",
         };
         size_t pi;
-        for (pi = 0; pi < sizeof(paths) / sizeof(paths[0]) && !g_log; pi++)
+        for (pi = 0; pi < sizeof(paths) / sizeof(paths[0]) && !g_log; pi++) {
             g_log = fopen(paths[pi], "w");
+            if (g_log)
+                logmsg("log abierto en %s", paths[pi]);
+        }
     }
+    logmsg("ETAPA %d", (int)STAGE);
     logmsg("G923 PS3 Initializer v0.1");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
     sysUtilRegisterCallback(0, sysutil_cb, NULL);
 
+#if STAGE >= 1
     r = sysModuleLoad(SYSMODULE_USB);
     logmsg("sysModuleLoad(USB) = 0x%x", (unsigned)r);
+#endif
+#if STAGE >= 2
     r = usbInit();
     logmsg("usbInit() = %d", (int)r);
+#endif
+#if STAGE >= 3
     r = usbRegisterExtraLdd(&wake_ops, G923_VID, G923_PID_XBOX);
     logmsg("registrar C26D = %d", (int)r);
     r = usbRegisterExtraLdd(&hid_ops, G923_VID, G923_PID_HID);
     logmsg("registrar C26E = %d", (int)r);
+#endif
+    (void)r;
 
     memset(&prev, 0, sizeof(prev));
 
@@ -450,10 +464,16 @@ int main(int argc, char *argv[])
     }
 
     logmsg("Saliendo...");
+#if STAGE >= 3
     usbUnregisterExtraLdd(&wake_ops);
     usbUnregisterExtraLdd(&hid_ops);
+#endif
+#if STAGE >= 2
     usbEnd();
+#endif
+#if STAGE >= 1
     sysModuleUnload(SYSMODULE_USB);
+#endif
     if (g_log)
         fclose(g_log);
     sysUtilUnregisterCallback(0);

@@ -55,8 +55,11 @@ jobs:
 
       - name: Build PKG
         run: |
-          make
-          make pkg
+          for n in 0 1 2 3; do
+            make clean STAGE=$n
+            make pkg STAGE=$n APPID=G923STG0$n
+          done
+          ls -l *.pkg *.self
 
       - name: Diagnostico (solo si falla)
         if: failure()
