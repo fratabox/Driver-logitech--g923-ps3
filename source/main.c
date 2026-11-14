@@ -388,7 +388,19 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    g_log = fopen(LOG_PATH, "w");
+    {
+        /* Prueba varias rutas: la primera que se pueda escribir queda como log */
+        static const char *const paths[] = {
+            LOG_PATH,
+            "/dev_hdd0/game/G923INIT0/USRDIR/g923_log.txt",
+            "/dev_hdd0/g923_log.txt",
+            "/dev_usb000/g923_log.txt",
+            "/dev_usb001/g923_log.txt",
+        };
+        size_t pi;
+        for (pi = 0; pi < sizeof(paths) / sizeof(paths[0]) && !g_log; pi++)
+            g_log = fopen(paths[pi], "w");
+    }
     logmsg("G923 PS3 Initializer v0.1");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
