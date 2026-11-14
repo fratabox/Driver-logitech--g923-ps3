@@ -33,6 +33,8 @@
 #endif
 #include <unistd.h>
 #include <sysmodule/sysmodule.h>
+#include <malloc.h>
+#include "rsxutil.h"
 #if defined(__has_include)
 #  if __has_include(<sys/systime.h>)
 #    include <sys/systime.h>
@@ -368,6 +370,47 @@ static usbLddOps hid_ops = { "g923hid", hid_probe, hid_attach, hid_detach };
 /* Salida limpia con el boton PS                                       */
 /* ------------------------------------------------------------------ */
 
+
+/* ---- Indicador en pantalla: bandas de color (sin texto) ----
+ * 0 arranque  1 log abierto  2 callback sysutil  3 modulo USB
+ * 4 usbInit   5 driver C26D  6 driver C26E       7 llegaron reportes
+ * gris = pendiente, verde = ok, rojo = fallo
+ */
+#define NBANDS 8
+static u8  g_band[NBANDS];
+static int g_video_ok = 0;
+
+static void screen_draw(int beat)
+{
+    u32 *fb;
+    u32 x, y, bh, c;
+    if (!g_video_ok)
+        return;
+    fb = color_buffer[curr_fb];
+    bh = display_height / NBANDS;
+    for (y = 0; y < display_height; y++) {
+        u32 b = y / bh;
+        if (b >= NBANDS) b = NBANDS - 1;
+        c = (g_band[b] == 1) ? 0x0000AA00 : (g_band[b] == 2) ? 0x00CC0000 : 0x00404040;
+        for (x = 0; x < display_width; x++)
+            fb[y * display_width + x] = c;
+    }
+    /* latido: cuadrado que alterna blanco/negro arriba a la derecha */
+    c = beat ? 0x00FFFFFF : 0x00000000;
+    for (y = 8; y < 88 && y < display_height; y++)
+        for (x = display_width - 88; x < display_width - 8; x++)
+            fb[y * display_width + x] = c;
+    flip();
+}
+
+static int g_beat = 0;
+static void mark(int band, int ok)
+{
+    if (band >= 0 && band < NBANDS)
+        g_band[band] = ok ? 1 : 2;
+    screen_draw(g_beat);
+}
+
 static void sysutil_cb(u64 status, u64 param, void *usrdata)
 {
     (void)param;
@@ -393,6 +436,15 @@ int main(int argc, char *argv[])
     (void)argv;
 
     {
+        void *host_addr = memalign(1024 * 1024, HOST_SIZE);
+        if (host_addr) {
+            init_screen(host_addr, HOST_SIZE);
+            g_video_ok = 1;
+        }
+    }
+    mark(0, 1);
+
+    {
         /* Prueba varias rutas: la primera que se pueda escribir queda como log */
         static const char *const paths[] = {
             LOG_PATH,
@@ -408,25 +460,31 @@ int main(int argc, char *argv[])
                 logmsg("log abierto en %s", paths[pi]);
         }
     }
+    mark(1, g_log != NULL);
     logmsg("ETAPA %d", (int)STAGE);
     logmsg("G923 PS3 Initializer v0.1");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
-    sysUtilRegisterCallback(0, sysutil_cb, NULL);
+    r = sysUtilRegisterCallback(0, sysutil_cb, NULL);
+    mark(2, r == 0);
 
 #if STAGE >= 1
     r = sysModuleLoad(SYSMODULE_USB);
     logmsg("sysModuleLoad(USB) = 0x%x", (unsigned)r);
+    mark(3, r == 0);
 #endif
 #if STAGE >= 2
     r = usbInit();
     logmsg("usbInit() = %d", (int)r);
+    mark(4, r == 0);
 #endif
 #if STAGE >= 3
     r = usbRegisterExtraLdd(&wake_ops, G923_VID, G923_PID_XBOX);
     logmsg("registrar C26D = %d", (int)r);
+    mark(5, r == 0);
     r = usbRegisterExtraLdd(&hid_ops, G923_VID, G923_PID_HID);
     logmsg("registrar C26E = %d", (int)r);
+    mark(6, r == 0);
 #endif
     (void)r;
 
@@ -436,6 +494,12 @@ int main(int argc, char *argv[])
         sysUtilCheckCallback();
         G923_SLEEP_US(100 * 1000);          /* 10 veces por segundo */
         ticks++;
+        if ((ticks % 5) == 0) {
+            g_beat ^= 1;
+            if (g_reports > 0)
+                g_band[7] = 1;
+            screen_draw(g_beat);
+        }
 
         if (g_reports != last_reports && g_last_len == 11) {
             memcpy(snap, (const void *)g_last, 11);

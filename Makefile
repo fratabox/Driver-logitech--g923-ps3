@@ -11,7 +11,7 @@ BUILD		:=	build
 SOURCE		:=	source
 INCLUDE		:=	include
 DATA		:=	data
-LIBS		:=	-lusb -lsysmodule -lsysutil -llv2 -lm
+LIBS		:=	-lusb -lrsx -lgcm_sys -lsysmodule -lsysutil -lrt -llv2 -lm
 
 TITLE		:=	G923 Init etapa $(STAGE)
 APPID		?=	G923INIT0
