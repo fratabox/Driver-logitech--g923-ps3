@@ -66,9 +66,22 @@ jobs:
         run: |
           set -eo pipefail
           source scripts/env.sh
-          # sourceware.org bloquea a los runners de GitHub (HTTP 403): se usan espejos de GitHub.
+          # sourceware.org bloquea a los runners de GitHub (HTTP 403): se prueba una lista de espejos
+          # y se usa el primero que tenga los tags que hacen falta.
+          BIN_URL=""
+          for u in \
+              https://sourceware.org/git/binutils-gdb.git \
+              https://forge.sourceware.org/binutils-gdb/binutils-gdb-mirror.git \
+              https://gitlab.com/open-mirrors/binutils-gdb.git \
+              https://git.amanoteam.com/AmanoTeam/binutils.git ; do
+            echo "probando espejo: $u"
+            if git ls-remote --tags "$u" 2>&1 | grep -q 'refs/tags/binutils-2_42$'; then
+              BIN_URL="$u"; echo "usando: $u"; break
+            fi
+          done
+          [ -n "$BIN_URL" ] || { echo "ningun espejo de binutils responde"; exit 1; }
           sed -i \
-            -e 's#https://sourceware.org/git/binutils-gdb.git#https://github.com/bminor/binutils-gdb.git#' \
+            -e "s#https://sourceware.org/git/binutils-gdb.git#${BIN_URL}#" \
             -e 's#https://sourceware.org/git/newlib-cygwin.git#https://github.com/mirror/newlib-cygwin.git#' \
             scripts/bootstrap.sh
           grep -n 'init_remote' scripts/bootstrap.sh
