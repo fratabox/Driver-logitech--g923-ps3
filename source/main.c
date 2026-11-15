@@ -532,7 +532,7 @@ static void sysutil_cb(u64 status, u64 param, void *usrdata)
 #define D2_R2       0x02
 #define D2_L2       0x01
 
-/* Botones del volante (mapa provisional, ver README) */
+/* Levas del volante */
 #define WB_PADDLE_R  0x000010
 #define WB_PADDLE_L  0x000020
 
@@ -596,30 +596,32 @@ static void vpad_pump(void)
         /* embrague -> stick derecho vertical (arriba = pisado) */
         b[PB_RY] = (u16)(0x80 - (clu >> 1));
 
-        /* cruceta (valores estandar HID; 8 = reposo) */
+        /* cruceta: en ESTE volante izquierda/derecha estan invertidas
+         * respecto del HID estandar (confirmado con tu prueba: derecha=6, izquierda=2) */
         switch (rep.hat) {
         case 0: d1 |= D1_UP; break;
-        case 1: d1 |= D1_UP | D1_RIGHT; break;
-        case 2: d1 |= D1_RIGHT; break;
-        case 3: d1 |= D1_DOWN | D1_RIGHT; break;
+        case 1: d1 |= D1_UP | D1_LEFT; break;
+        case 2: d1 |= D1_LEFT; break;
+        case 3: d1 |= D1_DOWN | D1_LEFT; break;
         case 4: d1 |= D1_DOWN; break;
-        case 5: d1 |= D1_DOWN | D1_LEFT; break;
-        case 6: d1 |= D1_LEFT; break;
-        case 7: d1 |= D1_UP | D1_LEFT; break;
+        case 5: d1 |= D1_DOWN | D1_RIGHT; break;
+        case 6: d1 |= D1_RIGHT; break;
+        case 7: d1 |= D1_UP | D1_RIGHT; break;
         default: break;
         }
 
-        /* botones (mapa PROVISIONAL) */
-        if (rep.buttons & WB_PADDLE_R) { d2 |= D2_R1; b[PB_P_R1] = 0xFF; }
-        if (rep.buttons & WB_PADDLE_L) { d2 |= D2_L1; b[PB_P_L1] = 0xFF; }
-        if (rep.buttons & 0x000001) { d2 |= D2_CROSS;    b[PB_P_CRO] = 0xFF; }
-        if (rep.buttons & 0x000002) { d2 |= D2_CIRCLE;   b[PB_P_CIR] = 0xFF; }
-        if (rep.buttons & 0x000004) { d2 |= D2_SQUARE;   b[PB_P_SQU] = 0xFF; }
-        if (rep.buttons & 0x000008) { d2 |= D2_TRIANGLE; b[PB_P_TRI] = 0xFF; }
-        if (rep.buttons & 0x000040) d1 |= D1_L3;
-        if (rep.buttons & 0x000080) d1 |= D1_R3;
-        if (rep.buttons & 0x000100) d1 |= D1_SELECT;
-        if (rep.buttons & 0x000200) d1 |= D1_START;
+        /* botones (mapa segun la foto numerada) */
+        if (rep.buttons & WB_PADDLE_R) { d2 |= D2_R1; b[PB_P_R1] = 0xFF; }   /* leva derecha   */
+        if (rep.buttons & WB_PADDLE_L) { d2 |= D2_L1; b[PB_P_L1] = 0xFF; }   /* leva izquierda */
+        if (rep.buttons & 0x000001) { d2 |= D2_SQUARE;   b[PB_P_SQU] = 0xFF; } /* X */
+        if (rep.buttons & 0x000002) { d2 |= D2_CIRCLE;   b[PB_P_CIR] = 0xFF; } /* B */
+        if (rep.buttons & 0x000004) { d2 |= D2_CROSS;    b[PB_P_CRO] = 0xFF; } /* A */
+        if (rep.buttons & 0x000008) { d2 |= D2_TRIANGLE; b[PB_P_TRI] = 0xFF; } /* Y */
+        if (rep.buttons & 0x000040) d1 |= D1_START;     /* menu  (10) */
+        if (rep.buttons & 0x000080) d1 |= D1_SELECT;    /* vista (9)  */
+        if (rep.buttons & 0x000200) d1 |= D1_L3;        /* LSB (11)   */
+        if (rep.buttons & 0x000100) d1 |= D1_R3;        /* RSB (12)   */
+        /* sin asignar todavia: 0x40000 (+ 13), 0x80000 (- 14), 0x400000 y 0x100000 (rueda 15) */
         if (d1 & D1_UP)    b[PB_P_UP]    = 0xFF;
         if (d1 & D1_DOWN)  b[PB_P_DOWN]  = 0xFF;
         if (d1 & D1_LEFT)  b[PB_P_LEFT]  = 0xFF;
