@@ -66,6 +66,12 @@ jobs:
         run: |
           set -eo pipefail
           source scripts/env.sh
+          # sourceware.org bloquea a los runners de GitHub (HTTP 403): se usan espejos de GitHub.
+          sed -i \
+            -e 's#https://sourceware.org/git/binutils-gdb.git#https://github.com/bminor/binutils-gdb.git#' \
+            -e 's#https://sourceware.org/git/newlib-cygwin.git#https://github.com/mirror/newlib-cygwin.git#' \
+            scripts/bootstrap.sh
+          grep -n 'init_remote' scripts/bootstrap.sh
           ./scripts/bootstrap.sh
           git -C src/upstream/gcc rev-parse -q --verify refs/tags/releases/gcc-16.1.0 ||
             git -C src/upstream/gcc fetch --depth 1 --no-tags origin \
