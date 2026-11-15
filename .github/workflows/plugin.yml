@@ -1,0 +1,104 @@
+name: Plugin de prueba (PS3DK)
+
+# Compila el toolchain libre PS3DK (GCC 16 para PS3) y con el arma un plugin
+# .sprx minimo. La primera vez tarda ~1 h; las siguientes usan cache.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin.yml'
+
+permissions:
+  contents: read
+
+env:
+  PS3DK_REPO: FirebirdTA01/PS3DK
+  PS3DK_REF: 46cf14ba9e8f55eddd7d2e501d683063cae48a84
+  PS3DEV: /home/runner/ps3dev
+
+jobs:
+  plugin:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Traer PS3DK (version fija)
+        run: |
+          git init /home/runner/ps3dk-src
+          cd /home/runner/ps3dk-src
+          git remote add origin https://github.com/${PS3DK_REPO}.git
+          git fetch --depth 1 origin ${PS3DK_REF}
+          git checkout FETCH_HEAD
+          git log -1 --oneline
+
+      - name: Dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential gcc-12 g++-12 cmake ninja-build texinfo \
+              bison flex libgmp-dev libmpfr-dev libmpc-dev libisl-dev \
+              zlib1g-dev libreadline-dev libncurses-dev libexpat1-dev \
+              libssl-dev libelf-dev python3 python3-dev git wget patch \
+              autoconf automake libtool zip unzip
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache del toolchain ya compilado
+        id: tc
+        uses: actions/cache/restore@v5
+        with:
+          path: /home/runner/ps3dev
+          key: ps3dk-toolchain-${{ env.PS3DK_REF }}-v1
+
+      - name: Cache de fuentes upstream
+        if: steps.tc.outputs.cache-hit != 'true'
+        uses: actions/cache@v5
+        with:
+          path: /home/runner/ps3dk-src/src/upstream
+          key: ps3dk-upstream-${{ env.PS3DK_REF }}
+
+      - name: Compilar toolchain PPU (GCC 16) y SDK
+        if: steps.tc.outputs.cache-hit != 'true'
+        working-directory: /home/runner/ps3dk-src
+        shell: bash
+        run: |
+          set -eo pipefail
+          source scripts/env.sh
+          ./scripts/bootstrap.sh
+          git -C src/upstream/gcc rev-parse -q --verify refs/tags/releases/gcc-16.1.0 ||
+            git -C src/upstream/gcc fetch --depth 1 --no-tags origin \
+                "refs/tags/releases/gcc-16.1.0:refs/tags/releases/gcc-16.1.0"
+          PS3_GCC_THREADS=posix ./scripts/build-ppu-toolchain.sh --gcc=16
+          ./scripts/install-host-tools.sh
+          ./scripts/build-psl1ght.sh
+          ./scripts/build-sdk.sh --headers-only
+          ./scripts/build-cell-stub-archives.sh
+          ./scripts/build-sdk.sh --no-host-tools
+
+      - name: Guardar cache del toolchain
+        if: steps.tc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /home/runner/ps3dev
+          key: ps3dk-toolchain-${{ env.PS3DK_REF }}-v1
+
+      - name: Compilar el plugin
+        working-directory: /home/runner/ps3dk-src
+        shell: bash
+        run: |
+          set -eo pipefail
+          source scripts/env.sh
+          cmake -S "$GITHUB_WORKSPACE/plugin" -B /home/runner/plugin-build \
+              -DCMAKE_TOOLCHAIN_FILE="$PS3_TOOLCHAIN_ROOT/cmake/ps3-ppu-toolchain.cmake"
+          cmake --build /home/runner/plugin-build
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          find /home/runner/plugin-build -name 'g923_plugin_test*' \
+              \( -name '*.prx' -o -name '*.sprx' \) -exec cp -v {} "$GITHUB_WORKSPACE/out/" \;
+          ls -la "$GITHUB_WORKSPACE/out"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: g923-plugin-test
+          path: out/
