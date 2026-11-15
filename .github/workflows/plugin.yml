@@ -88,6 +88,7 @@ jobs:
           git -C src/upstream/gcc rev-parse -q --verify refs/tags/releases/gcc-16.1.0 ||
             git -C src/upstream/gcc fetch --depth 1 --no-tags origin \
                 "refs/tags/releases/gcc-16.1.0:refs/tags/releases/gcc-16.1.0"
+          ./scripts/build-spu-toolchain.sh
           # Sin el paso gdb (no hace falta y su fuente no esta disponible).
           for step in binutils gcc-newlib symlinks; do
             PS3_GCC_THREADS=posix ./scripts/build-ppu-toolchain.sh --gcc=16 $step
