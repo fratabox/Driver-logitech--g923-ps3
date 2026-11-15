@@ -33,6 +33,7 @@
 #endif
 #include <unistd.h>
 #include <sysmodule/sysmodule.h>
+#include <io/pad.h>
 #include <malloc.h>
 #include "rsxutil.h"
 #if defined(__has_include)
@@ -486,6 +487,170 @@ static void sysutil_cb(u64 status, u64 param, void *usrdata)
 /* main                                                                */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Etapa 4: control virtual de la PS3 alimentado con el volante        */
+/* ------------------------------------------------------------------ */
+#if STAGE >= 4
+
+/* Posiciones dentro de padData.button[] (iguales a CELL_PAD_BTN_OFFSET_*) */
+#define PB_D1        2   /* digital 1: cruceta, start, select, L3, R3 */
+#define PB_D2        3   /* digital 2: cruz, circulo, ..., R1, L1, R2, L2 */
+#define PB_RX        4
+#define PB_RY        5
+#define PB_LX        6
+#define PB_LY        7
+#define PB_P_RIGHT   8
+#define PB_P_LEFT    9
+#define PB_P_UP     10
+#define PB_P_DOWN   11
+#define PB_P_TRI    12
+#define PB_P_CIR    13
+#define PB_P_CRO    14
+#define PB_P_SQU    15
+#define PB_P_L1     16
+#define PB_P_R1     17
+#define PB_P_L2     18
+#define PB_P_R2     19
+#define PB_SENS_X   20
+
+/* bits de digital 1 */
+#define D1_LEFT   0x80
+#define D1_DOWN   0x40
+#define D1_RIGHT  0x20
+#define D1_UP     0x10
+#define D1_START  0x08
+#define D1_R3     0x04
+#define D1_L3     0x02
+#define D1_SELECT 0x01
+/* bits de digital 2 */
+#define D2_SQUARE   0x80
+#define D2_CROSS    0x40
+#define D2_CIRCLE   0x20
+#define D2_TRIANGLE 0x10
+#define D2_R1       0x08
+#define D2_L1       0x04
+#define D2_R2       0x02
+#define D2_L2       0x01
+
+/* Botones del volante (mapa provisional, ver README) */
+#define WB_PADDLE_R  0x000010
+#define WB_PADDLE_L  0x000020
+
+static s32 g_vpad  = -1;
+static s32 g_vport = -1;
+static u32 g_vins  = 0;
+
+static int clampi(int v, int lo, int hi)
+{
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* pedal invertido (255 suelto) -> 0..255 pisado */
+static int pedal(int raw, int rest, int full)
+{
+    int span = rest - full;
+    int v;
+    if (span <= 0)
+        return 0;
+    v = (rest - raw) * 255 / span;
+    v = clampi(v, 0, 255);
+    return v < 10 ? 0 : v;          /* zona muerta */
+}
+
+static void vpad_pump(void)
+{
+    u8 snap[11];
+    G923Report rep;
+    padData d;
+    u16 *b = d.button;
+    int acc, brk, clu;
+    u16 d1 = 0, d2 = 0;
+    int have;
+
+    if (g_vpad < 0)
+        return;
+
+    memset(&d, 0, sizeof(d));
+    d.len = 24;
+    b[PB_RX] = b[PB_RY] = b[PB_LX] = b[PB_LY] = 0x80;
+    b[PB_SENS_X] = b[PB_SENS_X + 1] = b[PB_SENS_X + 2] = b[PB_SENS_X + 3] = 0x200;
+
+    have = 0;
+    if (g_last_len == 11) {
+        memcpy(snap, (const void *)g_last, 11);
+        have = g923_decode(snap, 11, &rep);
+    }
+
+    if (have) {
+        /* volante -> stick izquierdo horizontal (0..255, centro ~128) */
+        b[PB_LX] = (u16)(rep.steering >> 8);
+
+        acc = pedal(rep.axis_y,  235, 0);       /* acelerador */
+        brk = pedal(rep.axis_z,  255, 11);      /* freno      */
+        clu = pedal(rep.axis_rz, 255, 0);       /* embrague   */
+
+        b[PB_P_R2] = (u16)acc;
+        b[PB_P_L2] = (u16)brk;
+        if (acc > 16) d2 |= D2_R2;
+        if (brk > 16) d2 |= D2_L2;
+        /* embrague -> stick derecho vertical (arriba = pisado) */
+        b[PB_RY] = (u16)(0x80 - (clu >> 1));
+
+        /* cruceta (valores estandar HID; 8 = reposo) */
+        switch (rep.hat) {
+        case 0: d1 |= D1_UP; break;
+        case 1: d1 |= D1_UP | D1_RIGHT; break;
+        case 2: d1 |= D1_RIGHT; break;
+        case 3: d1 |= D1_DOWN | D1_RIGHT; break;
+        case 4: d1 |= D1_DOWN; break;
+        case 5: d1 |= D1_DOWN | D1_LEFT; break;
+        case 6: d1 |= D1_LEFT; break;
+        case 7: d1 |= D1_UP | D1_LEFT; break;
+        default: break;
+        }
+
+        /* botones (mapa PROVISIONAL) */
+        if (rep.buttons & WB_PADDLE_R) { d2 |= D2_R1; b[PB_P_R1] = 0xFF; }
+        if (rep.buttons & WB_PADDLE_L) { d2 |= D2_L1; b[PB_P_L1] = 0xFF; }
+        if (rep.buttons & 0x000001) { d2 |= D2_CROSS;    b[PB_P_CRO] = 0xFF; }
+        if (rep.buttons & 0x000002) { d2 |= D2_CIRCLE;   b[PB_P_CIR] = 0xFF; }
+        if (rep.buttons & 0x000004) { d2 |= D2_SQUARE;   b[PB_P_SQU] = 0xFF; }
+        if (rep.buttons & 0x000008) { d2 |= D2_TRIANGLE; b[PB_P_TRI] = 0xFF; }
+        if (rep.buttons & 0x000040) d1 |= D1_L3;
+        if (rep.buttons & 0x000080) d1 |= D1_R3;
+        if (rep.buttons & 0x000100) d1 |= D1_SELECT;
+        if (rep.buttons & 0x000200) d1 |= D1_START;
+        if (d1 & D1_UP)    b[PB_P_UP]    = 0xFF;
+        if (d1 & D1_DOWN)  b[PB_P_DOWN]  = 0xFF;
+        if (d1 & D1_LEFT)  b[PB_P_LEFT]  = 0xFF;
+        if (d1 & D1_RIGHT) b[PB_P_RIGHT] = 0xFF;
+    }
+
+    b[PB_D1] = d1;
+    b[PB_D2] = d2;
+
+    ioPadLddDataInsert(g_vpad, &d);
+    g_vins++;
+}
+
+/* Lee de vuelta el pad virtual por su puerto, para ver si el sistema lo recibe. */
+static void vpad_loopback_log(void)
+{
+    padData rd;
+    s32 r;
+    if (g_vport < 0)
+        return;
+    memset(&rd, 0, sizeof(rd));
+    r = ioPadGetData((u32)g_vport, &rd);
+    logmsg("[pad] insertados=%u lectura rc=%d len=%d D1=%04x D2=%04x LX=%u RY=%u R2=%u L2=%u",
+           (unsigned)g_vins, (int)r, (int)rd.len,
+           (unsigned)rd.button[PB_D1], (unsigned)rd.button[PB_D2],
+           (unsigned)rd.button[PB_LX], (unsigned)rd.button[PB_RY],
+           (unsigned)rd.button[PB_P_R2], (unsigned)rd.button[PB_P_L2]);
+}
+
+#endif /* STAGE >= 4 */
+
 int main(int argc, char *argv[])
 {
     s32 r;
@@ -529,7 +694,7 @@ int main(int argc, char *argv[])
             logmsg("sin memoria para el video");
         }
     }
-    logmsg("G923 PS3 Initializer v0.3 (sale solo a los 2 min)");
+    logmsg("G923 PS3 Initializer v0.4 (sale solo a los 2 min)");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
     r = sysUtilRegisterCallback(0, sysutil_cb, NULL);
@@ -551,13 +716,35 @@ int main(int argc, char *argv[])
     mark(5, r == 0);
     mark(6, r == 0);
 #endif
+#if STAGE >= 4
+    r = ioPadInit(7);
+    logmsg("ioPadInit(7) = 0x%x", (unsigned)r);
+    g_vpad = ioPadLddRegisterController();
+    logmsg("ioPadLddRegisterController() = %d", (int)g_vpad);
+    usleep(20 * 1000);          /* darle tiempo a la PS3 a registrarlo */
+    if (g_vpad >= 0) {
+        g_vport = ioPadLddGetPortNo(g_vpad);
+        logmsg("puerto del pad virtual = %d", (int)g_vport);
+    }
+    mark(7, g_vpad >= 0);
+#endif
     (void)r;
 
     memset(&prev, 0, sizeof(prev));
 
     while (g_running) {
         sysUtilCheckCallback();
+#if STAGE >= 4
+        {
+            int k;
+            for (k = 0; k < 25; k++) {      /* 25 x 4 ms = 100 ms */
+                vpad_pump();
+                G923_SLEEP_US(4 * 1000);
+            }
+        }
+#else
         G923_SLEEP_US(100 * 1000);          /* 10 veces por segundo */
+#endif
         ticks++;
         if (ticks >= 1200) {            /* 2 minutos: salida automatica */
             logmsg("tiempo cumplido (2 min): salgo solo");
@@ -591,12 +778,20 @@ int main(int argc, char *argv[])
             }
         }
 
+#if STAGE >= 4
+        if ((ticks % 10) == 0)
+            vpad_loopback_log();
+#endif
         if ((ticks % 100) == 0)
             logmsg("[estado] t=%us reportes=%u otros=%u", (unsigned)(ticks / 10),
                    (unsigned)g_reports, (unsigned)g_other);
     }
 
     logmsg("Saliendo...");
+#if STAGE >= 4
+    if (g_vpad >= 0)
+        logmsg("ioPadLddUnregisterController = 0x%x", (unsigned)ioPadLddUnregisterController(g_vpad));
+#endif
 #if STAGE >= 3
     usbUnregisterExtraLdd(&g_ops);
 #endif

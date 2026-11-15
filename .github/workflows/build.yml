@@ -55,7 +55,7 @@ jobs:
 
       - name: Build PKG
         run: |
-          for n in 0 1 2 3; do
+          for n in 3 4; do
             make clean STAGE=$n
             make pkg STAGE=$n APPID=G923STG0$n
           done
