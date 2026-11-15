@@ -136,6 +136,22 @@ static volatile u32 g_reports    = 0;   /* reportes de 11 bytes recibidos */
 static volatile u32 g_other      = 0;   /* otros (p.ej. HID++ de 64 bytes) */
 static volatile int g_running    = 1;
 
+
+/* usbAllocateMemory devuelve una direccion de 32 bits (PRX). Si se pasa la
+ * direccion de un puntero de 64 bits, la direccion queda en la mitad alta
+ * (se vio tx=0x200a000000000000 en el log). Se lee en un u64 y se corrige. */
+static u8 *usb_alloc(size_t n)
+{
+    u64 a = 0;
+    u32 addr;
+    if (usbAllocateMemory((void **)&a, n) < 0)
+        return NULL;
+    addr = (u32)(a >> 32);
+    if (addr == 0)
+        addr = (u32)a;
+    return addr ? (u8 *)(uintptr_t)addr : NULL;
+}
+
 /* ------------------------------------------------------------------ */
 /* Utilidades de descriptores                                          */
 /* ------------------------------------------------------------------ */
@@ -234,7 +250,8 @@ static s32 wake_attach(s32 dev_id)
         logmsg("[wake] usbOpenPipe(OUT) fallo: %d", (int)u->o_pipe);
         return USB_ATTACH_FAILED;
     }
-    if (usbAllocateMemory((void **)&u->tx, 64) < 0 || !u->tx) {
+    u->tx = usb_alloc(64);
+    if (!u->tx) {
         logmsg("[wake] usbAllocateMemory fallo");
         return USB_ATTACH_FAILED;
     }
@@ -343,7 +360,8 @@ static s32 hid_attach(s32 dev_id)
         logmsg("[hid] usbOpenPipe(IN) fallo: %d", (int)u->i_pipe);
         return USB_ATTACH_FAILED;
     }
-    if (usbAllocateMemory((void **)&u->rx, 64) < 0 || !u->rx) {
+    u->rx = usb_alloc(64);
+    if (!u->rx) {
         logmsg("[hid] usbAllocateMemory fallo");
         return USB_ATTACH_FAILED;
     }
@@ -511,7 +529,7 @@ int main(int argc, char *argv[])
             logmsg("sin memoria para el video");
         }
     }
-    logmsg("G923 PS3 Initializer v0.2");
+    logmsg("G923 PS3 Initializer v0.3");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
     r = sysUtilRegisterCallback(0, sysutil_cb, NULL);
@@ -528,11 +546,9 @@ int main(int argc, char *argv[])
     mark(4, r == 0);
 #endif
 #if STAGE >= 3
-    r = usbRegisterExtraLdd(&g_ops, G923_VID, G923_PID_XBOX);
-    logmsg("registrar C26D = %d", (int)r);
+    r = usbRegisterExtraLdd2(&g_ops, G923_VID, G923_PID_XBOX, G923_PID_HID);
+    logmsg("registrar C26D..C26E (un solo registro) = %d (0x%x)", (int)r, (unsigned)r);
     mark(5, r == 0);
-    r = usbRegisterExtraLdd(&g_ops, G923_VID, G923_PID_HID);
-    logmsg("registrar C26E = %d", (int)r);
     mark(6, r == 0);
 #endif
     (void)r;
