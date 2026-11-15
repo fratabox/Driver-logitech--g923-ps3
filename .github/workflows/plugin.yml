@@ -123,6 +123,17 @@ jobs:
               \( -name '*.prx' -o -name '*.sprx' \) -exec cp -v {} "$GITHUB_WORKSPACE/out/" \;
           ls -la "$GITHUB_WORKSPACE/out"
 
+      - name: Mostrar cabeceras del plugin (diagnostico)
+        run: |
+          for f in out/*.sprx; do
+            echo "== $f"; ls -l "$f"
+            python3 - "$f" <<'PY'
+          import sys
+          d=open(sys.argv[1],'rb').read()
+          print(d[:0x60].hex())
+          PY
+          done
+
       - uses: actions/upload-artifact@v5
         with:
           name: g923-plugin-test
