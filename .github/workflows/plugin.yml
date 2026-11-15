@@ -111,6 +111,9 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+          # El SDK instalado quedo marcado "+dirty" por el parche a bootstrap.sh; se repite igual
+          # para que la comprobacion de version del SDK coincida al usar el cache.
+          sed -i 's#https://sourceware.org/git/newlib-cygwin.git#https://github.com/mirror/newlib-cygwin.git#' scripts/bootstrap.sh
           source scripts/env.sh
           cmake -S "$GITHUB_WORKSPACE/plugin" -B /home/runner/plugin-build \
               -DCMAKE_TOOLCHAIN_FILE="$PS3_TOOLCHAIN_ROOT/cmake/ps3-ppu-toolchain.cmake"
