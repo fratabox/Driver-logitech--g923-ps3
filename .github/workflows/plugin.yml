@@ -66,22 +66,21 @@ jobs:
         run: |
           set -eo pipefail
           source scripts/env.sh
-          # sourceware.org bloquea a los runners de GitHub (HTTP 403): se prueba una lista de espejos
-          # y se usa el primero que tenga los tags que hacen falta.
-          BIN_URL=""
-          for u in \
-              https://sourceware.org/git/binutils-gdb.git \
-              https://forge.sourceware.org/binutils-gdb/binutils-gdb-mirror.git \
-              https://gitlab.com/open-mirrors/binutils-gdb.git \
-              https://git.amanoteam.com/AmanoTeam/binutils.git ; do
-            echo "probando espejo: $u"
-            if git ls-remote --tags "$u" 2>&1 | grep -q 'refs/tags/binutils-2_42$'; then
-              BIN_URL="$u"; echo "usando: $u"; break
-            fi
-          done
-          [ -n "$BIN_URL" ] || { echo "ningun espejo de binutils responde"; exit 1; }
+          # sourceware.org bloquea a los runners de GitHub (HTTP 403): binutils se arma desde el
+          # tarball oficial de GNU y se mete en un repo git local con los tags que el script espera.
+          mkdir -p src/upstream/binutils-gdb
+          (
+            cd src/upstream/binutils-gdb
+            git init -q
+            curl -fL --retry 5 https://ftpmirror.gnu.org/binutils/binutils-2.42.tar.xz \
+              | tar -xJ --strip-components=1
+            git add -A
+            git -c user.email=ci@example.com -c user.name=ci commit -q -m "binutils 2.42 (tarball GNU)"
+            git tag binutils-2_42
+            git tag gdb-14.2-release   # marcador: GDB no se compila en esta prueba
+            git remote add origin https://example.invalid/binutils-gdb.git
+          )
           sed -i \
-            -e "s#https://sourceware.org/git/binutils-gdb.git#${BIN_URL}#" \
             -e 's#https://sourceware.org/git/newlib-cygwin.git#https://github.com/mirror/newlib-cygwin.git#' \
             scripts/bootstrap.sh
           grep -n 'init_remote' scripts/bootstrap.sh
@@ -89,7 +88,10 @@ jobs:
           git -C src/upstream/gcc rev-parse -q --verify refs/tags/releases/gcc-16.1.0 ||
             git -C src/upstream/gcc fetch --depth 1 --no-tags origin \
                 "refs/tags/releases/gcc-16.1.0:refs/tags/releases/gcc-16.1.0"
-          PS3_GCC_THREADS=posix ./scripts/build-ppu-toolchain.sh --gcc=16
+          # Sin el paso gdb (no hace falta y su fuente no esta disponible).
+          for step in binutils gcc-newlib symlinks; do
+            PS3_GCC_THREADS=posix ./scripts/build-ppu-toolchain.sh --gcc=16 $step
+          done
           ./scripts/install-host-tools.sh
           ./scripts/build-psl1ght.sh
           ./scripts/build-sdk.sh --headers-only
