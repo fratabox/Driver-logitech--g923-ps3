@@ -529,7 +529,7 @@ int main(int argc, char *argv[])
             logmsg("sin memoria para el video");
         }
     }
-    logmsg("G923 PS3 Initializer v0.3");
+    logmsg("G923 PS3 Initializer v0.3 (sale solo a los 2 min)");
     logmsg("Esperando el volante (enchufalo ahora si no lo estaba)...");
 
     r = sysUtilRegisterCallback(0, sysutil_cb, NULL);
@@ -559,6 +559,10 @@ int main(int argc, char *argv[])
         sysUtilCheckCallback();
         G923_SLEEP_US(100 * 1000);          /* 10 veces por segundo */
         ticks++;
+        if (ticks >= 1200) {            /* 2 minutos: salida automatica */
+            logmsg("tiempo cumplido (2 min): salgo solo");
+            g_running = 0;
+        }
         if ((ticks % 5) == 0) {
             g_beat ^= 1;
             if (g_reports > 0)
